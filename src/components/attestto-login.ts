@@ -111,7 +111,7 @@ export class AttesttoLogin extends LitElement {
         ? this.trustedIssuers.split(',').map((s) => s.trim())
         : []
 
-      const result = await verifyPresentation(vp, wallet, {
+      const result = await verifyPresentation(vp as unknown as Record<string, unknown>, wallet, {
         resolverUrl: this.resolverUrl || undefined,
         trustedIssuers: trustedArr.length > 0 ? trustedArr : ['*'],
       } as Parameters<typeof verifyPresentation>[2])
