@@ -53,6 +53,7 @@ export class AttesttoLogin extends LitElement {
   @state() private _status: string = ''
   @state() private _loading: boolean = false
   @state() private _error: string = ''
+  @state() private _discoveryDone: boolean = false
 
   connectedCallback(): void {
     super.connectedCallback()
@@ -63,11 +64,13 @@ export class AttesttoLogin extends LitElement {
     try {
       const wallets = await discoverWallets(1500)
       this._wallets = wallets
+      this._discoveryDone = true
       this._emitEvent('wallets-discovered', {
         count: wallets.length,
         wallets,
       })
     } catch {
+      this._discoveryDone = true
       // Silent — wallet discovery is best-effort
     }
   }
@@ -217,6 +220,14 @@ export class AttesttoLogin extends LitElement {
             ? html`<span class="wallet-count">${this._wallets.length} wallet${this._wallets.length > 1 ? 's' : ''}</span>`
             : nothing}
         </button>
+
+        ${this._discoveryDone && this._wallets.length === 0
+          ? html`<div part="no-wallet" class="no-wallet">
+              No DID wallet detected. Install a
+              <a href="https://attestto.org/docs/wallets/" target="_blank" rel="noopener">compatible wallet</a>
+              or use an OAuth provider below.
+            </div>`
+          : nothing}
 
         ${hasOAuth
           ? html`
@@ -374,6 +385,23 @@ export class AttesttoLogin extends LitElement {
 
     .status.error {
       color: #ef4444;
+    }
+
+    .no-wallet {
+      margin-top: 0.6rem;
+      padding: 0.6rem 0.8rem;
+      background: var(--login-bg);
+      border: 1px dashed var(--login-border);
+      border-radius: var(--login-radius);
+      font-size: 0.78rem;
+      color: var(--login-text-muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .no-wallet a {
+      color: var(--login-primary);
+      text-decoration: underline;
     }
 
     .spinner {

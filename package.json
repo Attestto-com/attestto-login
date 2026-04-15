@@ -1,6 +1,6 @@
 {
   "name": "@attestto/login",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "One-line DID login for any website. Web Component with OAuth bridge — Google, Microsoft, or any DID wallet. No framework required.",
   "license": "Apache-2.0",
   "type": "module",
