@@ -33,7 +33,7 @@
   "homepage": "https://attestto.org/docs/quickstart/add-did-login/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Attestto-com/login.git"
+    "url": "https://github.com/Attestto-com/attestto-login.git"
   },
   "files": [
     "dist",
