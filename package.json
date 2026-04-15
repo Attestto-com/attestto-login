@@ -1,0 +1,61 @@
+{
+  "name": "@attestto/login",
+  "version": "0.1.0",
+  "description": "One-line DID login for any website. Web Component with OAuth bridge — Google, Microsoft, or any DID wallet. No framework required.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/attestto-login.js",
+  "module": "dist/attestto-login.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/attestto-login.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "keywords": [
+    "login",
+    "authentication",
+    "did",
+    "sso",
+    "oauth",
+    "web-components",
+    "decentralized-identity",
+    "verifiable-credentials",
+    "wallet",
+    "passwordless",
+    "google-login",
+    "microsoft-login",
+    "wordpress",
+    "joomla",
+    "attestto"
+  ],
+  "homepage": "https://attestto.org/docs/quickstart/add-did-login/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Attestto-com/login.git"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "vitest run",
+    "format": "prettier --write 'src/**/*.ts'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@attestto/id-wallet-adapter": "^0.4.1",
+    "lit": "^3.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "jsdom": "^25.0.0"
+  }
+}
