@@ -4,6 +4,17 @@ All notable changes to `@attestto/login` will be documented in this file.
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-07-19
+
+### Security
+- **DID login now binds the presentation to its challenge and origin (SOC-6).** The component already generated a fresh `challenge` and `domain` for the CHAPI request but discarded them; it now keeps both and passes them to `verifyPresentation` as `expectedChallenge` / `expectedDomain`. A presentation that was not produced for this exact challenge and this origin — e.g. one captured on a phishing page or replayed from a prior session — is rejected by the verifier, so `login-success` is never emitted for a replayed or cross-origin presentation.
+
+### Changed
+- Requires `@attestto/id-wallet-adapter@^0.6.0`, which enforces the challenge/domain binding. Earlier adapter versions ignore the new options and do **not** provide replay protection.
+
+### Added
+- 2 tests asserting the issued challenge/origin are handed to the verifier and that `login-success` is withheld when the verifier reports the binding invalid (51 total).
+
 ## [0.1.2] - 2026-06-29
 
 ### Added

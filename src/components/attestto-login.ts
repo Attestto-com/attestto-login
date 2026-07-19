@@ -100,6 +100,14 @@ export class AttesttoLogin extends LitElement {
 
       this._status = 'Requesting credentials...'
 
+      // Freshness + audience binding (SOC-6). Generate the challenge and domain
+      // ONCE and keep them: the same values requested here are required back on
+      // the returned presentation (see verifyPresentation below). A VP that was
+      // not produced for this exact challenge and this origin — e.g. one captured
+      // on a phishing page or replayed from a prior session — is rejected.
+      const challenge = crypto.randomUUID()
+      const domain = window.location.origin
+
       // Request a Verifiable Presentation via CHAPI
       const vp = await withTimeout(
         navigator.credentials.get({
@@ -107,8 +115,8 @@ export class AttesttoLogin extends LitElement {
           web: {
             VerifiablePresentation: {
               query: { type: 'DIDAuthentication' },
-              challenge: crypto.randomUUID(),
-              domain: window.location.origin,
+              challenge,
+              domain,
             },
           },
         }),
@@ -134,6 +142,11 @@ export class AttesttoLogin extends LitElement {
         verifyPresentation(vp as unknown as Record<string, unknown>, wallet, {
           resolverUrl: this.resolverUrl || undefined,
           trustedIssuers: trustedArr.length > 0 ? trustedArr : ['*'],
+          // Require the presentation to be bound to the challenge/domain we just
+          // issued. The verifier rejects a mismatch, so `login-success` below is
+          // never reached for a replayed or cross-origin presentation.
+          expectedChallenge: challenge,
+          expectedDomain: domain,
         } as Parameters<typeof verifyPresentation>[2]),
         this.apiTimeoutMs,
         'Verification',
