@@ -139,9 +139,10 @@ export class AttesttoLogin extends LitElement {
         : []
 
       // Typed against an explicit shape so a rename/typo of expectedChallenge/
-      // expectedDomain is caught by tsc. The cast only bridges to the adapter's
-      // VerifyOptions (the pinned install may lag the binding-enforcing version and
-      // types resolverUrl as required); it must not mask the two fields below.
+      // expectedDomain is caught by tsc. The cast bridges only the one field
+      // that differs from the adapter's VerifyOptions: this component allows an
+      // empty `resolver-url` (integrator-supplied), whereas VerifyOptions types
+      // resolverUrl as required. It must not mask the two binding fields below.
       const verifyOptions: {
         resolverUrl?: string
         trustedIssuers: string[]
