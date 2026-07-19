@@ -7,6 +7,7 @@ import {
   type WalletAnnouncement,
 } from '@attestto/id-wallet-adapter'
 import type { LoginConfig, LoginResult, OAuthProvider } from '../types.js'
+import { withTimeout, classifyError } from '../internal/error-handling.js'
 
 /**
  * <attestto-login> — One-line login component.
@@ -49,10 +50,17 @@ export class AttesttoLogin extends LitElement {
   /** Compact mode — just the button, no card wrapper */
   @property({ type: Boolean }) compact = false
 
+  /** Timeout for wallet-side user interactions (pickWallet, credentials.get). Default 60s. */
+  @property({ type: Number, attribute: 'wallet-timeout-ms' }) walletTimeoutMs = 60000
+
+  /** Timeout for network calls (verifyPresentation). Default 20s. */
+  @property({ type: Number, attribute: 'api-timeout-ms' }) apiTimeoutMs = 20000
+
   @state() private _wallets: WalletAnnouncement[] = []
   @state() private _status: string = ''
   @state() private _loading: boolean = false
   @state() private _error: string = ''
+  @state() private _errorRetryable: boolean = false
   @state() private _discoveryDone: boolean = false
 
   connectedCallback(): void {
@@ -76,12 +84,14 @@ export class AttesttoLogin extends LitElement {
   }
 
   private async _handleDIDLogin(): Promise<void> {
+    if (this._loading) return // hard guard against double-fire
     this._loading = true
     this._error = ''
+    this._errorRetryable = false
     this._status = 'Connecting to wallet...'
 
     try {
-      const wallet = await pickWallet()
+      const wallet = await withTimeout(pickWallet(), this.walletTimeoutMs, 'Wallet selection')
       if (!wallet) {
         this._loading = false
         this._status = ''
@@ -91,19 +101,25 @@ export class AttesttoLogin extends LitElement {
       this._status = 'Requesting credentials...'
 
       // Request a Verifiable Presentation via CHAPI
-      const vp = await navigator.credentials.get({
-        // @ts-expect-error — CHAPI web credential type
-        web: {
-          VerifiablePresentation: {
-            query: { type: 'DIDAuthentication' },
-            challenge: crypto.randomUUID(),
-            domain: window.location.origin,
+      const vp = await withTimeout(
+        navigator.credentials.get({
+          // @ts-expect-error — CHAPI web credential type
+          web: {
+            VerifiablePresentation: {
+              query: { type: 'DIDAuthentication' },
+              challenge: crypto.randomUUID(),
+              domain: window.location.origin,
+            },
           },
-        },
-      })
+        }),
+        this.walletTimeoutMs,
+        'Credential request',
+      )
 
       if (!vp) {
-        this._error = 'No credentials received'
+        const cancelled = classifyError(new Error('user denied'))
+        this._error = cancelled.message
+        this._errorRetryable = false
         this._loading = false
         return
       }
@@ -114,10 +130,14 @@ export class AttesttoLogin extends LitElement {
         ? this.trustedIssuers.split(',').map((s) => s.trim())
         : []
 
-      const result = await verifyPresentation(vp as unknown as Record<string, unknown>, wallet, {
-        resolverUrl: this.resolverUrl || undefined,
-        trustedIssuers: trustedArr.length > 0 ? trustedArr : ['*'],
-      } as Parameters<typeof verifyPresentation>[2])
+      const result = await withTimeout(
+        verifyPresentation(vp as unknown as Record<string, unknown>, wallet, {
+          resolverUrl: this.resolverUrl || undefined,
+          trustedIssuers: trustedArr.length > 0 ? trustedArr : ['*'],
+        } as Parameters<typeof verifyPresentation>[2]),
+        this.apiTimeoutMs,
+        'Verification',
+      )
 
       if (result.valid) {
         const loginResult: LoginResult = {
@@ -129,27 +149,48 @@ export class AttesttoLogin extends LitElement {
         this._emitEvent('login-success', loginResult)
         this._status = `Authenticated: ${loginResult.did}`
       } else {
-        const errMsg = result.errors.map((e) => e.code).join(', ')
+        // Verification failure is terminal — a different credential is needed,
+        // not a retry of the same one.
+        const errMsg = result.errors.map((e) => e.code).join(', ') || 'unknown'
         this._error = `Verification failed: ${errMsg}`
-        this._emitEvent('login-error', {
-          error: errMsg,
-          method: 'did',
-        })
+        this._errorRetryable = false
+        this._emitEvent('login-error', { error: errMsg, method: 'did' })
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Login failed'
-      this._error = msg
-      this._emitEvent('login-error', { error: msg, method: 'did' })
+      const classified = classifyError(err)
+      this._error = classified.message
+      this._errorRetryable = classified.retryable
+      const rawMsg = err instanceof Error ? err.message : String(err ?? 'Login failed')
+      this._emitEvent('login-error', { error: rawMsg, method: 'did' })
     } finally {
       this._loading = false
+      this._status = ''
     }
   }
 
+  /** Public reset — clears error/status. Useful for parent apps. */
+  reset(): void {
+    if (this._loading) return
+    this._error = ''
+    this._errorRetryable = false
+    this._status = ''
+  }
+
   private _handleOAuthLogin(provider: OAuthProvider): void {
+    if (this._loading) return // hard guard against double-fire
     if (!this.issuerEndpoint) {
-      this._error = 'No issuer-endpoint configured for OAuth'
+      this._error = 'OAuth sign-in is not configured for this site.'
+      this._errorRetryable = false
       return
     }
+
+    // Lock UI while we hand off to the OAuth flow — even though the redirect
+    // happens immediately, the brief lock prevents double-clicks before the
+    // browser navigates away.
+    this._loading = true
+    this._error = ''
+    this._errorRetryable = false
+    this._status = `Redirecting to ${provider}…`
 
     this._emitEvent('oauth-start', { provider })
 
@@ -249,12 +290,43 @@ export class AttesttoLogin extends LitElement {
             `
           : nothing}
 
-        ${this._status
+        ${this._loading
+          ? html`
+              <div
+                part="loading"
+                class="loading"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+                <span class="loading-text">${this._status || 'Working…'}</span>
+              </div>
+            `
+          : nothing}
+
+        ${this._status && !this._loading && !this._error
           ? html`<div part="status" class="status">${this._status}</div>`
           : nothing}
 
         ${this._error
-          ? html`<div part="status" class="status error">${this._error}</div>`
+          ? html`
+              <div part="status" class="status error" role="alert">
+                ${this._error}
+                ${this._errorRetryable
+                  ? html`
+                      <button
+                        part="retry-button"
+                        class="btn btn-retry"
+                        type="button"
+                        @click=${this._handleDIDLogin}
+                      >
+                        Try again
+                      </button>
+                    `
+                  : nothing}
+              </div>
+            `
           : nothing}
       </div>
     `
@@ -414,8 +486,56 @@ export class AttesttoLogin extends LitElement {
       animation: spin 0.6s linear infinite;
     }
 
+    .loading {
+      margin-top: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      align-items: stretch;
+    }
+
+    .loading-bar {
+      height: 3px;
+      width: 100%;
+      overflow: hidden;
+      border-radius: 2px;
+      background: var(--login-border);
+    }
+
+    .loading-bar-fill {
+      width: 40%;
+      height: 100%;
+      background: var(--login-primary);
+      animation: indeterminate 1.2s ease-in-out infinite;
+    }
+
+    .loading-text {
+      font-size: 0.8rem;
+      color: var(--login-text-muted);
+      text-align: center;
+    }
+
+    .btn-retry {
+      margin-top: 0.5rem;
+      background: var(--login-bg);
+      color: var(--login-text);
+      border: 1px solid var(--login-border);
+      padding: 0.5rem 1rem;
+      font-size: 0.85rem;
+    }
+
+    .btn-retry:hover:not(:disabled) {
+      border-color: var(--login-primary);
+      color: var(--login-primary);
+    }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
+    }
+
+    @keyframes indeterminate {
+      0%   { margin-left: -40%; }
+      100% { margin-left: 100%; }
     }
   `
 }
