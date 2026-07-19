@@ -138,16 +138,31 @@ export class AttesttoLogin extends LitElement {
         ? this.trustedIssuers.split(',').map((s) => s.trim())
         : []
 
+      // Typed against an explicit shape so a rename/typo of expectedChallenge/
+      // expectedDomain is caught by tsc. The cast only bridges to the adapter's
+      // VerifyOptions (the pinned install may lag the binding-enforcing version and
+      // types resolverUrl as required); it must not mask the two fields below.
+      const verifyOptions: {
+        resolverUrl?: string
+        trustedIssuers: string[]
+        // Require the presentation to be bound to the challenge/domain we just
+        // issued. The verifier rejects a mismatch, so `login-success` below is
+        // never reached for a replayed or cross-origin presentation.
+        expectedChallenge: string
+        expectedDomain: string
+      } = {
+        resolverUrl: this.resolverUrl || undefined,
+        trustedIssuers: trustedArr.length > 0 ? trustedArr : ['*'],
+        expectedChallenge: challenge,
+        expectedDomain: domain,
+      }
+
       const result = await withTimeout(
-        verifyPresentation(vp as unknown as Record<string, unknown>, wallet, {
-          resolverUrl: this.resolverUrl || undefined,
-          trustedIssuers: trustedArr.length > 0 ? trustedArr : ['*'],
-          // Require the presentation to be bound to the challenge/domain we just
-          // issued. The verifier rejects a mismatch, so `login-success` below is
-          // never reached for a replayed or cross-origin presentation.
-          expectedChallenge: challenge,
-          expectedDomain: domain,
-        } as Parameters<typeof verifyPresentation>[2]),
+        verifyPresentation(
+          vp as unknown as Record<string, unknown>,
+          wallet,
+          verifyOptions as Parameters<typeof verifyPresentation>[2],
+        ),
         this.apiTimeoutMs,
         'Verification',
       )

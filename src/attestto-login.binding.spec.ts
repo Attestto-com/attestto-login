@@ -77,10 +77,16 @@ describe('SOC-6 — challenge/domain binding is passed to the verifier', () => {
 
     const el = new AttesttoLogin()
     const success = vi.fn()
+    const error = vi.fn()
     el.addEventListener('login-success', success)
+    el.addEventListener('login-error', error)
 
     await (el as unknown as { _handleDIDLogin: () => Promise<void> })._handleDIDLogin()
 
+    // The caller must be notified of rejection, not merely denied success.
     expect(success).not.toHaveBeenCalled()
+    expect(error).toHaveBeenCalledTimes(1)
+    const detail = (error.mock.calls[0][0] as CustomEvent).detail
+    expect(detail.error).toMatch(/DOMAIN_MISMATCH/i)
   })
 })
